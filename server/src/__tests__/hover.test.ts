@@ -807,6 +807,51 @@ describe('on hover', () => {
     expect(shouldNotShow).toBe(null)
   })
 
+  describe('python keywords', () => {
+    const hoverAt = async (line: number, character: number): ReturnType<typeof onHoverHandler> => {
+      bitBakeDocScanner.parseBitbakePythonKeywordsFile()
+      analyzer.analyze({
+        uri: DUMMY_URI,
+        document: FIXTURE_DOCUMENT.HOVER
+      })
+      return await onHoverHandler({
+        textDocument: { uri: DUMMY_URI },
+        position: { line, character }
+      })
+    }
+
+    const containing = (text: string): unknown => expect.objectContaining({
+      contents: expect.objectContaining({
+        value: expect.stringContaining(text)
+      })
+    })
+
+    it('should show hover documentation for the python keyword of a BitBake-style python function', async () => {
+      expect(await hoverAt(70, 2)).toEqual(containing('executed by BitBake or other'))
+    })
+
+    it('should show hover documentation for the def keyword', async () => {
+      expect(await hoverAt(74, 1)).toEqual(containing('are executed by other Python'))
+    })
+
+    it('should show hover documentation for inline python expansion', async () => {
+      expect(await hoverAt(77, 11)).toEqual(containing('inline Python variable expansion to set variables'))
+    })
+
+    it('should show hover documentation for __anonymous', async () => {
+      expect(await hoverAt(79, 9)).toEqual(containing('called anonymous Python functions, that run at the end'))
+    })
+
+    it('should show anonymous function documentation for the python keyword of an anonymous function', async () => {
+      expect(await hoverAt(79, 2)).toEqual(containing('called anonymous Python functions, that run at the end'))
+      expect(await hoverAt(83, 2)).toEqual(containing('called anonymous Python functions, that run at the end'))
+    })
+
+    it('should not show python keyword documentation on a python function name', async () => {
+      expect(await hoverAt(70, 8)).toBe(null)
+    })
+  })
+
   it('should show description of license on hover', async () => {
     analyzer.analyze({
       uri: DUMMY_URI,

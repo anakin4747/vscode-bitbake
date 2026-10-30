@@ -4,6 +4,7 @@
  * ------------------------------------------------------------------------------------------ */
 
 import { type HoverParams, type Hover, type MarkupKind } from 'vscode-languageserver'
+import { type Node } from 'web-tree-sitter'
 import { analyzer } from '../tree-sitter/analyzer'
 import { bitBakeDocScanner } from '../BitBakeDocScanner'
 import { logger } from '../lib/src/utils/OutputLogger'
@@ -110,6 +111,15 @@ export async function onHoverHandler (params: HoverParams): Promise<Hover | null
         hoverValue = `**${operatorInfo.name}**\n___\n${operatorInfo.definition}`
       }
     }
+
+    const pythonKeyword = getPythonKeyword(bitbakeNode)
+    if (pythonKeyword !== undefined) {
+      const pythonInfo = bitBakeDocScanner.pythonKeywordInfo.find(item => item.name === pythonKeyword)
+      if (pythonInfo !== undefined) {
+        logger.debug(`[onHover] Found python keyword: ${pythonInfo.name}`)
+        hoverValue = `**${pythonInfo.name}**\n___\n${pythonInfo.definition}`
+      }
+    }
   }
 
   let comments: string | null = null
@@ -161,6 +171,27 @@ export async function onHoverHandler (params: HoverParams): Promise<Hover | null
   }
 
   return null
+}
+
+function getPythonKeyword (node: Node): string | undefined {
+  const parentType = node.parent?.type
+  if (node.type === '${@' && parentType === 'inline_python') {
+    return '${@'
+  }
+  if (node.type === 'def' && parentType === 'python_function_definition') {
+    return 'def'
+  }
+  if (parentType === 'anonymous_python_function') {
+    const name = node.parent?.firstNamedChild
+    const isAnonymous = name?.type !== 'identifier' || name.text === '__anonymous'
+    if (node.type === 'python') {
+      return isAnonymous ? '__anonymous' : 'python'
+    }
+    if (node.type === 'identifier' && node.text === '__anonymous') {
+      return '__anonymous'
+    }
+  }
+  return undefined
 }
 
 function getGlobalSymbolComments (uri: string, word: string): string | null {

@@ -88,6 +88,7 @@ export class BitBakeDocScanner {
   private readonly _docPath: string = path.join(__dirname, '../resources/docs')
   private readonly _keywordInfo: DocInfo[] = KEYWORDS
   private _operatorInfo: DocInfo[] = []
+  private _pythonKeywordInfo: DocInfo[] = []
 
   get bitbakeVariableInfo (): VariableInfo[] {
     return this._bitbakeVariableInfo
@@ -113,6 +114,10 @@ export class BitBakeDocScanner {
     return this._operatorInfo
   }
 
+  get pythonKeywordInfo (): DocInfo[] {
+    return this._pythonKeywordInfo
+  }
+
   get pythonDatastoreFunction (): string[] {
     return this._pythonDatastoreFunction
   }
@@ -124,6 +129,7 @@ export class BitBakeDocScanner {
     this._yoctoTaskInfo = []
     this._pythonDatastoreFunction = []
     this._operatorInfo = []
+    this._pythonKeywordInfo = []
   }
 
   public parseDocs (): void {
@@ -133,6 +139,7 @@ export class BitBakeDocScanner {
     this.parseYoctoTaskFile()
     this.parsePythonDatastoreFunction()
     this.parseBitbakeOperatorsFile()
+    this.parseBitbakePythonKeywordsFile()
   }
 
   // TODO: Generalize these parse functions. They all read a file, match some content and store it.
@@ -295,6 +302,43 @@ export class BitBakeDocScanner {
   }
 
   public parseBitbakeOperatorsFile (): void {
+    this._operatorInfo = this.parseMetadataSections(
+      {
+        'Basic Variable Setting': ['='],
+        'Setting a default value (?=)': ['?='],
+        'Setting a weak default value (??=)': ['??='],
+        'Immediate variable expansion (:=)': [':='],
+        'Appending (+=) and prepending (=+) With Spaces': ['+=', '=+'],
+        'Appending (.=) and Prepending (=.) Without Spaces': ['.=', '=.'],
+        'Appending and Prepending (Override Style Syntax)': ['append', 'prepend'],
+        'Removal (Override Style Syntax)': ['remove']
+      },
+      // Override the auto-derived URL for sections whose RST anchor differs from their title
+      {
+        'Appending (+=) and prepending (=+) With Spaces': 'https://docs.yoctoproject.org/bitbake/bitbake-user-manual/bitbake-user-manual-metadata.html#appending-and-prepending',
+        'Removal (Override Style Syntax)': 'https://docs.yoctoproject.org/bitbake/bitbake-user-manual/bitbake-user-manual-metadata.html#removing-override-style-syntax'
+      }
+    )
+  }
+
+  public parseBitbakePythonKeywordsFile (): void {
+    this._pythonKeywordInfo = this.parseMetadataSections({
+      'Inline Python Variable Expansion': ['${@'],
+      'BitBake-Style Python Functions': ['python'],
+      'Python Functions': ['def'],
+      'Anonymous Python Functions': ['__anonymous']
+    })
+  }
+
+  /**
+   * Extract dash-underlined sections of bitbake-user-manual-metadata.rst as documentation
+   * @param sectionNameToNames Section titles mapped to the names documented by that section
+   * @param overriddenUrls Reference URLs for sections whose RST anchor differs from their title
+   */
+  private parseMetadataSections (
+    sectionNameToNames: Record<string, string[]>,
+    overriddenUrls: Partial<Record<string, string>> = {}
+  ): DocInfo[] {
     const filePath = path.join(this._docPath, 'bitbake-user-manual-metadata.rst')
     let file = ''
     try {
@@ -303,32 +347,15 @@ export class BitBakeDocScanner {
       logger.warn(`Failed to read file at ${filePath}`)
     }
 
-    const sectionNameToOperators: Record<string, string[]> = {
-      'Basic Variable Setting': ['='],
-      'Setting a default value (?=)': ['?='],
-      'Setting a weak default value (??=)': ['??='],
-      'Immediate variable expansion (:=)': [':='],
-      'Appending (+=) and prepending (=+) With Spaces': ['+=', '=+'],
-      'Appending (.=) and Prepending (=.) Without Spaces': ['.=', '=.'],
-      'Appending and Prepending (Override Style Syntax)': ['append', 'prepend'],
-      'Removal (Override Style Syntax)': ['remove']
-    }
-
-    // Override the auto-derived URL for sections whose RST anchor differs from their title
-    const overriddenUrls: Partial<Record<string, string>> = {
-      'Appending (+=) and prepending (=+) With Spaces': 'https://docs.yoctoproject.org/bitbake/bitbake-user-manual/bitbake-user-manual-metadata.html#appending-and-prepending',
-      'Removal (Override Style Syntax)': 'https://docs.yoctoproject.org/bitbake/bitbake-user-manual/bitbake-user-manual-metadata.html#removing-override-style-syntax'
-    }
-
     // Find all dash-underlined section headers
     const headerRegex = /^[^\n]+\n-{3,}\n\n/gm
     const headerMatches = Array.from(file.matchAll(headerRegex))
 
-    const operatorInfo: DocInfo[] = []
+    const docInfo: DocInfo[] = []
     for (const [i, match] of headerMatches.entries()) {
       const title = match[0].split('\n')[0]
-      if (!(title in sectionNameToOperators)) continue
-      const operators = sectionNameToOperators[title]
+      if (!(title in sectionNameToNames)) continue
+      const names = sectionNameToNames[title]
 
       // Extract content from this header to the next
       const contentStart = match.index + match[0].length
@@ -344,8 +371,8 @@ export class BitBakeDocScanner {
         .replace(/-+/g, '-')
         .replace(/^-+|-+$/g, '')
       const referenceUrl = overriddenUrls[title] ?? `https://docs.yoctoproject.org/bitbake/bitbake-user-manual/bitbake-user-manual-metadata.html#${anchor}`
-      for (const name of operators) {
-        operatorInfo.push({
+      for (const name of names) {
+        docInfo.push({
           name,
           definition,
           referenceUrl,
@@ -353,7 +380,7 @@ export class BitBakeDocScanner {
         })
       }
     }
-    this._operatorInfo = operatorInfo
+    return docInfo
   }
 }
 
